@@ -19,6 +19,16 @@ pub fn decode<T: Read>(buf_stream: &mut BufferedStream<T>) -> serde_json::Value 
         }
         buf_stream.read_byte(); // skip the trailing 'e'
         return serde_json::Value::Array(values);
+    } else if first_byte == b'd' {
+        buf_stream.read_byte(); // skip the 'd'
+        let mut map = serde_json::Map::new();
+        while buf_stream.peek_byte().unwrap() != b'e' {
+            let key = decode_string(buf_stream);
+            let value = decode(buf_stream);
+            map.insert(key, value);
+        }
+        buf_stream.read_byte(); // skip the trailing 'e'
+        return serde_json::Value::Object(map);
     } else {
         panic!(
             "Unable to determine bencode type from first byte: {}",
