@@ -10,8 +10,8 @@ fn main() {
 
     if command == "decode" {
         let encoded_string = (&args[2]).clone();
-        let buf_stream = BufferedStream::new(encoded_string.as_bytes());
-        let decoded_value = bdecoder::decode(buf_stream);
+        let mut buf_stream = BufferedStream::new(encoded_string.as_bytes());
+        let decoded_value = bdecoder::decode(&mut buf_stream);
         println!("{}", decoded_value.to_string());
     } else {
         println!("unknown command: {}", args[1])
