@@ -1,19 +1,19 @@
-use std::io::Read;
+use std::{collections::HashMap, io::Read};
 
-use serde_json::Number;
-
+use super::btype::BType;
 use crate::buffered_stream::BufferedStream;
 
-pub fn decode<T: Read>(buf_stream: &mut BufferedStream<T>) -> serde_json::Value {
+// todo don't save everything in serde_json::Value. Need to store some strings as Vec<u8> if they fail to convert from utf8
+pub fn decode<T: Read>(buf_stream: &mut BufferedStream<T>) -> BType {
     let first_byte = buf_stream.peek_byte().unwrap();
     if first_byte.is_ascii_digit() {
-        return serde_json::Value::String(decode_string(buf_stream));
+        BType::Bytes(decode_bytes(buf_stream))
     } else if first_byte == b'i' {
-        return serde_json::Value::Number(Number::from_i128(decode_number(buf_stream)).unwrap());
+        BType::Number(decode_number(buf_stream))
     } else if first_byte == b'l' {
-        return serde_json::Value::Array(decode_list(buf_stream));
+        BType::List(decode_list(buf_stream))
     } else if first_byte == b'd' {
-        return serde_json::Value::Object(decode_map(buf_stream));
+        BType::Map(decode_map(buf_stream))
     } else {
         panic!(
             "Unable to determine bencode type from first byte: {}",
@@ -22,16 +22,12 @@ pub fn decode<T: Read>(buf_stream: &mut BufferedStream<T>) -> serde_json::Value 
     }
 }
 
-fn decode_string<T: Read>(buf_stream: &mut BufferedStream<T>) -> String {
+fn decode_bytes<T: Read>(buf_stream: &mut BufferedStream<T>) -> Vec<u8> {
     let length = String::from_utf8(buf_stream.read_until(b':').unwrap())
         .unwrap()
         .parse::<usize>()
         .unwrap();
-    let string;
-    unsafe {
-        string = String::from_utf8_unchecked(buf_stream.read_n_bytes(length).unwrap());
-    }
-    return string;
+    return buf_stream.read_n_bytes(length).unwrap();
 }
 
 fn decode_number<T: Read>(buf_stream: &mut BufferedStream<T>) -> i128 {
@@ -42,25 +38,23 @@ fn decode_number<T: Read>(buf_stream: &mut BufferedStream<T>) -> i128 {
         .unwrap()
 }
 
-fn decode_list<T: Read>(buf_stream: &mut BufferedStream<T>) -> Vec<serde_json::Value> {
+fn decode_list<T: Read>(buf_stream: &mut BufferedStream<T>) -> Vec<Box<BType>> {
     buf_stream.read_byte(); // skip the 'l'
-    let mut values: Vec<serde_json::Value> = Vec::new();
+    let mut values = Vec::new();
     while buf_stream.peek_byte().unwrap() != b'e' {
-        values.push(decode(buf_stream));
+        values.push(Box::new(decode(buf_stream)));
     }
     buf_stream.read_byte(); // skip the trailing 'e'
     return values;
 }
 
-pub fn decode_map<T: Read>(
-    buf_stream: &mut BufferedStream<T>,
-) -> serde_json::Map<String, serde_json::Value> {
+pub fn decode_map<T: Read>(buf_stream: &mut BufferedStream<T>) -> HashMap<String, Box<BType>> {
     buf_stream.read_byte(); // skip the 'd'
-    let mut map = serde_json::Map::new();
+    let mut map = HashMap::new();
     while buf_stream.peek_byte().unwrap() != b'e' {
-        let key = decode_string(buf_stream);
+        let key = String::from_utf8(decode_bytes(buf_stream)).unwrap();
         let value = decode(buf_stream);
-        map.insert(key, value);
+        map.insert(key, Box::new(value));
     }
     buf_stream.read_byte(); // skip the trailing 'e'
     return map;
