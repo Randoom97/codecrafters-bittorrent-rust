@@ -63,12 +63,12 @@ impl BType {
         }
     }
 
-    pub fn as_bytes(&self) -> Option<&Vec<u8>> {
-        match self {
-            BType::Bytes(bytes) => Some(bytes),
-            _ => None,
-        }
-    }
+    // pub fn as_bytes(&self) -> Option<&Vec<u8>> {
+    //     match self {
+    //         BType::Bytes(bytes) => Some(bytes),
+    //         _ => None,
+    //     }
+    // }
 
     pub fn as_number(&self) -> Option<&i128> {
         match self {
@@ -77,12 +77,12 @@ impl BType {
         }
     }
 
-    pub fn as_list(&self) -> Option<&Vec<Box<BType>>> {
-        match self {
-            BType::List(list) => Some(list),
-            _ => None,
-        }
-    }
+    // pub fn as_list(&self) -> Option<&Vec<Box<BType>>> {
+    //     match self {
+    //         BType::List(list) => Some(list),
+    //         _ => None,
+    //     }
+    // }
 
     pub fn as_map(&self) -> Option<&HashMap<String, Box<BType>>> {
         match self {
