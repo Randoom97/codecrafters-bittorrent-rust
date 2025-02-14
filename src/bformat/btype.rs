@@ -63,12 +63,12 @@ impl BType {
         }
     }
 
-    // pub fn as_bytes(&self) -> Option<&Vec<u8>> {
-    //     match self {
-    //         BType::Bytes(bytes) => Some(bytes),
-    //         _ => None,
-    //     }
-    // }
+    pub fn as_bytes(&self) -> Option<&Vec<u8>> {
+        match self {
+            BType::Bytes(bytes) => Some(bytes),
+            _ => None,
+        }
+    }
 
     pub fn as_number(&self) -> Option<&i128> {
         match self {
