@@ -11,8 +11,12 @@ impl BType {
     pub fn to_json_value(&self) -> serde_json::Value {
         match self {
             BType::Bytes(bytes) => {
-                // TODO if non utf friendly bytes need to be converted, print as hex or something
-                serde_json::Value::String(String::from_utf8(bytes.clone()).unwrap())
+                let string_result = String::from_utf8(bytes.clone());
+                if string_result.is_ok() {
+                    serde_json::Value::String(string_result.unwrap())
+                } else {
+                    serde_json::Value::String(hex::encode(bytes))
+                }
             }
             BType::Number(number) => {
                 serde_json::Value::Number(serde_json::Number::from_i128(*number).unwrap())
