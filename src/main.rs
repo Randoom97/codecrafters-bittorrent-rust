@@ -1,11 +1,11 @@
 mod bformat;
 mod buffered_stream;
 mod torrent_info;
+mod torrent_protocol;
 
 use bformat::bdecoder;
 use buffered_stream::BufferedStream;
-use bytes::Buf;
-use std::{collections::HashMap, env};
+use std::env;
 use torrent_info::TorrentInfo;
 
 #[tokio::main]
@@ -37,31 +37,7 @@ async fn main() {
         "peers" => {
             let torrent_info = TorrentInfo::from_file(&args[2]);
 
-            let params = HashMap::from([
-                ("peer_id", "1234567890abcdefghij".to_owned()),
-                ("port", "6881".to_owned()),
-                ("uploaded", "0".to_owned()),
-                ("downloaded", "0".to_owned()),
-                ("left", format!("{}", torrent_info.length)),
-                ("compact", "1".to_owned()),
-            ]);
-
-            let mut url =
-                reqwest::Url::parse_with_params(torrent_info.url.as_str(), params).unwrap();
-            url.query_pairs_mut().append_pair("info_hash", unsafe {
-                std::str::from_utf8_unchecked(&torrent_info.info_hash)
-            });
-
-            let mut response_reader = BufferedStream::new(
-                reqwest::get(url)
-                    .await
-                    .unwrap()
-                    .bytes()
-                    .await
-                    .unwrap()
-                    .reader(),
-            );
-            let response_btype = bdecoder::decode(&mut response_reader);
+            let response_btype = torrent_protocol::discovery(&torrent_info).await;
             let response = response_btype.as_map().unwrap();
             let peers = human_readable_peers(response.get("peers").unwrap().as_bytes().unwrap());
 
@@ -71,6 +47,11 @@ async fn main() {
             }
             peers_string.pop();
             println!("{}", peers_string);
+        }
+        "handshake" => {
+            let torrent_info = TorrentInfo::from_file(&args[2]);
+            let peer_id = torrent_protocol::handshake(&torrent_info, &args[3]);
+            println!("Peer ID: {}", hex::encode(peer_id));
         }
         _ => {
             println!("unknown command: {}", args[1])
