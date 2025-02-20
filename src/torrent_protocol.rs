@@ -63,17 +63,7 @@ pub fn handshake<T: Read>(
     peer_id
 }
 
-pub fn download_piece<T: Read>(
-    torrent_info: &TorrentInfo,
-    piece_index: usize,
-    writer: &mut impl Write,
-    reader: &mut BufferedStream<T>,
-) -> Result<Vec<u8>, String> {
-    if piece_index >= torrent_info.piece_hashes.len() {
-        return Err(format!("Error: piece index {piece_index} out of range!"));
-    }
-
-    // send interested
+pub fn send_interested<T: Read>(writer: &mut impl Write, reader: &mut BufferedStream<T>) {
     writer.write_all(&mut vec![0, 0, 0, 1, 2]).unwrap();
     writer.flush().unwrap();
 
@@ -83,6 +73,17 @@ pub fn download_piece<T: Read>(
         if message.len() > 0 && message[0] == 1 {
             break;
         }
+    }
+}
+
+pub fn download_piece<T: Read>(
+    torrent_info: &TorrentInfo,
+    piece_index: usize,
+    writer: &mut impl Write,
+    reader: &mut BufferedStream<T>,
+) -> Result<Vec<u8>, String> {
+    if piece_index >= torrent_info.piece_hashes.len() {
+        return Err(format!("Error: piece index {piece_index} out of range!"));
     }
 
     // request & receive blocks

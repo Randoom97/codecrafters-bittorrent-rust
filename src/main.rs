@@ -65,6 +65,8 @@ async fn main() {
             let mut reader = BufferedStream::new(writer.try_clone().unwrap());
             torrent_protocol::handshake(&torrent_info, &mut writer, &mut reader);
 
+            torrent_protocol::send_interested(&mut writer, &mut reader);
+
             let data = torrent_protocol::download_piece(
                 &torrent_info,
                 (&args[5]).parse::<usize>().unwrap().to_owned(),
@@ -74,6 +76,27 @@ async fn main() {
             .unwrap();
             let mut file = File::create(&args[3]).unwrap();
             file.write_all(&data).unwrap();
+            file.flush().unwrap();
+        }
+        "download" => {
+            let torrent_info = TorrentInfo::from_file(&args[4]);
+            let response_btype = torrent_protocol::discovery(&torrent_info).await;
+            let response = response_btype.as_map().unwrap();
+            let peer = &human_readable_peers(response.get("peers").unwrap().as_bytes().unwrap())[0];
+
+            let mut writer = TcpStream::connect(peer).unwrap();
+            let mut reader = BufferedStream::new(writer.try_clone().unwrap());
+            torrent_protocol::handshake(&torrent_info, &mut writer, &mut reader);
+
+            torrent_protocol::send_interested(&mut writer, &mut reader);
+
+            let mut file = File::create(&args[3]).unwrap();
+            for i in 0..torrent_info.piece_hashes.len() {
+                let data =
+                    torrent_protocol::download_piece(&torrent_info, i, &mut writer, &mut reader)
+                        .unwrap();
+                file.write_all(&data).unwrap();
+            }
             file.flush().unwrap();
         }
         _ => {
