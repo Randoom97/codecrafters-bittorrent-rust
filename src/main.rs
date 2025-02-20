@@ -5,7 +5,7 @@ mod torrent_protocol;
 
 use bformat::bdecoder;
 use buffered_stream::BufferedStream;
-use std::env;
+use std::{env, fs::File, io::Write, net::TcpStream};
 use torrent_info::TorrentInfo;
 
 #[tokio::main]
@@ -50,8 +50,31 @@ async fn main() {
         }
         "handshake" => {
             let torrent_info = TorrentInfo::from_file(&args[2]);
-            let peer_id = torrent_protocol::handshake(&torrent_info, &args[3]);
+            let mut writer = TcpStream::connect(&args[3]).unwrap();
+            let mut reader = BufferedStream::new(writer.try_clone().unwrap());
+            let peer_id = torrent_protocol::handshake(&torrent_info, &mut writer, &mut reader);
             println!("Peer ID: {}", hex::encode(peer_id));
+        }
+        "download_piece" => {
+            let torrent_info = TorrentInfo::from_file(&args[4]);
+            let response_btype = torrent_protocol::discovery(&torrent_info).await;
+            let response = response_btype.as_map().unwrap();
+            let peer = &human_readable_peers(response.get("peers").unwrap().as_bytes().unwrap())[0];
+
+            let mut writer = TcpStream::connect(peer).unwrap();
+            let mut reader = BufferedStream::new(writer.try_clone().unwrap());
+            torrent_protocol::handshake(&torrent_info, &mut writer, &mut reader);
+
+            let data = torrent_protocol::download_piece(
+                &torrent_info,
+                (&args[5]).parse::<usize>().unwrap().to_owned(),
+                &mut writer,
+                &mut reader,
+            )
+            .unwrap();
+            let mut file = File::create(&args[3]).unwrap();
+            file.write_all(&data).unwrap();
+            file.flush().unwrap();
         }
         _ => {
             println!("unknown command: {}", args[1])
