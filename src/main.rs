@@ -5,7 +5,7 @@ mod torrent_protocol;
 
 use bformat::bdecoder;
 use buffered_stream::BufferedStream;
-use std::{env, fs::File, io::Write, net::TcpStream};
+use std::{collections::HashMap, env, fs::File, io::Write, net::TcpStream};
 use torrent_info::TorrentInfo;
 
 #[tokio::main]
@@ -98,6 +98,50 @@ async fn main() {
                 file.write_all(&data).unwrap();
             }
             file.flush().unwrap();
+        }
+        "magnet_parse" => {
+            let link = &args[2];
+            let parts: Vec<&str> = link[8..].split('&').collect();
+
+            let mut info_hash_option: Option<Vec<u8>> = None;
+            let mut file_name_option: Option<String> = None;
+            let mut url_option: Option<String> = None;
+            for part in parts {
+                if part.starts_with("xt=urn:btih:") {
+                    info_hash_option = hex::decode(&part[12..]).ok();
+                }
+                if part.starts_with("dn=") {
+                    file_name_option = Some(part[3..].to_owned());
+                }
+                if part.starts_with("tr=") {
+                    // deserializes into a map of {"url", ""} for some reason, have to do the awful mapping to turn it back into a string
+                    url_option = serde_urlencoded::from_str::<HashMap<String, String>>(
+                        &part[3..].to_owned(),
+                    )
+                    .ok()
+                    .map(|u| u.keys().collect::<Vec<&String>>().pop().unwrap().to_owned());
+                }
+            }
+
+            if info_hash_option.is_none() {
+                panic!("Magnet link is missing info hash!");
+            }
+            if file_name_option.is_none() {
+                panic!("Magnet link is missing file name!");
+            }
+            if url_option.is_none() {
+                panic!("Magnet link is missing tracker url!");
+            }
+
+            let info_hash = info_hash_option.unwrap();
+            // let file_name = file_name_option.unwrap();
+            let url = url_option.unwrap();
+
+            println!(
+                "Tracker URL: {}\nInfo Hash: {}",
+                url,
+                hex::encode(info_hash)
+            );
         }
         _ => {
             println!("unknown command: {}", args[1])
