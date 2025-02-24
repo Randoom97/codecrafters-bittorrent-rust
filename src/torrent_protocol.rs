@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     io::{Read, Write},
 };
 
@@ -86,21 +86,45 @@ pub fn download_piece<T: Read>(
         return Err(format!("Error: piece index {piece_index} out of range!"));
     }
 
-    // request & receive blocks
-    let mut piece = Vec::new();
-    let mut data_left: usize = min(
+    // vec of (begin, length)
+    let mut blocks_needed: VecDeque<(u32, u32)> = VecDeque::new();
+    let piece_size: usize = min(
         torrent_info.piece_length,
         torrent_info.length - (torrent_info.piece_length * piece_index),
     );
-    while data_left > 0 {
-        let mut request = to_vec(13);
-        request.push(6);
-        request.append(&mut to_vec(piece_index as u32));
-        let begin = piece.len() as u32;
-        request.append(&mut to_vec(begin));
-        request.append(&mut to_vec(min(data_left, 0x4000) as u32));
+    let mut block_count = piece_size / 0x4000;
+    if piece_size % 0x4000 != 0 {
+        block_count += 1;
+    }
+    for i in 0..block_count {
+        blocks_needed.push_back((
+            (i * 0x4000) as u32,
+            if piece_size % 0x4000 != 0 && i == block_count - 1 {
+                (piece_size % 0x4000) as u32
+            } else {
+                0x4000
+            },
+        ));
+    }
 
-        writer.write_all(&mut request).unwrap();
+    // request & receive blocks
+    let mut piece = Vec::new();
+    let mut pending: VecDeque<(u32, u32)> = VecDeque::new();
+    while blocks_needed.len() > 0 || pending.len() > 0 {
+        while pending.len() < 5 && blocks_needed.len() > 0 {
+            // request up to 5 items
+            let mut request = to_vec(13);
+            request.push(6);
+            request.append(&mut to_vec(piece_index as u32));
+
+            let (begin, length) = blocks_needed.pop_front().unwrap();
+            request.append(&mut to_vec(begin));
+            request.append(&mut to_vec(length));
+
+            writer.write_all(&mut request).unwrap();
+
+            pending.push_back((begin, length));
+        }
         writer.flush().unwrap();
 
         loop {
@@ -109,10 +133,12 @@ pub fn download_piece<T: Read>(
                 continue;
             }
 
+            let (begin, length) = pending.pop_front().unwrap();
+
             assert_eq!(to_vec(piece_index as u32), message[1..5]);
             assert_eq!(to_vec(begin as u32), message[5..9]);
             let mut data: Vec<u8> = (&message[9..]).iter().cloned().collect();
-            data_left -= data.len();
+            assert_eq!(length as usize, data.len());
             piece.append(&mut data);
             break;
         }
