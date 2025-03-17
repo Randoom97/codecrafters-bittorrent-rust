@@ -44,11 +44,14 @@ pub fn handshake<T: Read>(
     torrent_info: &TorrentInfo,
     writer: &mut impl Write,
     reader: &mut BufferedStream<T>,
+    extension: Option<[u8; 8]>,
 ) -> Vec<u8> {
     let mut handshake_message: Vec<u8> = Vec::new();
     handshake_message.push(19);
     handshake_message.append(&mut "BitTorrent protocol".bytes().collect());
-    handshake_message.append(&mut vec![0, 0, 0, 0, 0, 0, 0, 0]);
+    handshake_message.append(&mut Vec::from(
+        extension.unwrap_or([0, 0, 0, 0, 0, 0, 0, 0]),
+    ));
     handshake_message.append(&mut torrent_info.info_hash.clone());
     handshake_message.append(&mut "1234567890abcdefghij".bytes().collect());
 

@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{collections::HashMap, fs::File};
 
 use sha1::{Digest, Sha1};
 
@@ -49,5 +49,46 @@ impl TorrentInfo {
             piece_length,
             piece_hashes,
         }
+    }
+
+    pub fn from_link(link: &String) -> Result<TorrentInfo, String> {
+        let parts: Vec<&str> = link[8..].split('&').collect();
+
+        let mut info_hash_option: Option<Vec<u8>> = None;
+        let mut file_name_option: Option<String> = None;
+        let mut url_option: Option<String> = None;
+        for part in parts {
+            if part.starts_with("xt=urn:btih:") {
+                info_hash_option = hex::decode(&part[12..]).ok();
+            }
+            if part.starts_with("dn=") {
+                file_name_option = Some(part[3..].to_owned());
+            }
+            if part.starts_with("tr=") {
+                // deserializes into a map of {"url", ""} for some reason, have to do the awful mapping to turn it back into a string
+                url_option =
+                    serde_urlencoded::from_str::<HashMap<String, String>>(&part[3..].to_owned())
+                        .ok()
+                        .map(|u| u.keys().collect::<Vec<&String>>().pop().unwrap().to_owned());
+            }
+        }
+
+        if info_hash_option.is_none() {
+            return Err("Magnet link is missing info hash!".to_owned());
+        }
+        if file_name_option.is_none() {
+            return Err("Magnet link is missing file name!".to_owned());
+        }
+        if url_option.is_none() {
+            return Err("Magnet link is missing tracker url!".to_owned());
+        }
+        return Ok(TorrentInfo {
+            url: url_option.unwrap(),
+            length: 999, // needs to be greater than 0 for handshake
+            info_hash: info_hash_option.unwrap(),
+            piece_length: 0,
+            piece_hashes: Vec::new(),
+            // file_name: file_name_option.unwrap(),
+        });
     }
 }
