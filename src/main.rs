@@ -52,7 +52,7 @@ async fn main() {
             let torrent_info = TorrentInfo::from_file(&args[2]);
             let mut writer = TcpStream::connect(&args[3]).unwrap();
             let mut reader = BufferedStream::new(writer.try_clone().unwrap());
-            let peer_id =
+            let (peer_id, _) =
                 torrent_protocol::handshake(&torrent_info, &mut writer, &mut reader, None);
             println!("Peer ID: {}", hex::encode(peer_id));
         }
@@ -126,12 +126,16 @@ async fn main() {
 
             let mut writer = TcpStream::connect(peer).unwrap();
             let mut reader = BufferedStream::new(writer.try_clone().unwrap());
-            let peer_id = torrent_protocol::handshake(
+            let (peer_id, reserved_bytes) = torrent_protocol::handshake(
                 &torrent_info,
                 &mut writer,
                 &mut reader,
                 Some([0, 0, 0, 0, 0, 0x10, 0, 0]),
             );
+            if reserved_bytes[5] & 0x10 != 0 {
+                torrent_protocol::extension_handshake(&mut writer, &mut reader);
+            }
+
             println!("Peer ID: {}", hex::encode(peer_id));
         }
         _ => {

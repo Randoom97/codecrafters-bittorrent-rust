@@ -8,7 +8,7 @@ use bytes::Buf;
 use sha1::{Digest, Sha1};
 
 use crate::{
-    bformat::{bdecoder, btype::BType},
+    bformat::{bdecoder, bencoder, btype::BType},
     buffered_stream::BufferedStream,
     torrent_info::TorrentInfo,
 };
@@ -40,17 +40,18 @@ pub async fn discovery(torrent_info: &TorrentInfo) -> BType {
     bdecoder::decode(&mut response_reader)
 }
 
+// return value is in the form of (Peer ID, peer reserved bytes)
 pub fn handshake<T: Read>(
     torrent_info: &TorrentInfo,
     writer: &mut impl Write,
     reader: &mut BufferedStream<T>,
-    extension: Option<[u8; 8]>,
-) -> Vec<u8> {
+    reserved_bytes: Option<[u8; 8]>,
+) -> (Vec<u8>, Vec<u8>) {
     let mut handshake_message: Vec<u8> = Vec::new();
     handshake_message.push(19);
     handshake_message.append(&mut "BitTorrent protocol".bytes().collect());
     handshake_message.append(&mut Vec::from(
-        extension.unwrap_or([0, 0, 0, 0, 0, 0, 0, 0]),
+        reserved_bytes.unwrap_or([0, 0, 0, 0, 0, 0, 0, 0]),
     ));
     handshake_message.append(&mut torrent_info.info_hash.clone());
     handshake_message.append(&mut "1234567890abcdefghij".bytes().collect());
@@ -59,11 +60,32 @@ pub fn handshake<T: Read>(
     writer.flush().unwrap();
 
     assert_eq!(handshake_message[..20], reader.read_n_bytes(20).unwrap());
-    reader.read_n_bytes(8).unwrap();
+    let peer_reserved_bytes = reader.read_n_bytes(8).unwrap();
     assert_eq!(torrent_info.info_hash, reader.read_n_bytes(20).unwrap());
     let peer_id = reader.read_n_bytes(20).unwrap();
 
-    peer_id
+    (peer_id, peer_reserved_bytes)
+}
+
+pub fn extension_handshake<T: Read>(writer: &mut impl Write, reader: &mut BufferedStream<T>) {
+    // wait for bitfield
+    let _ = read_peer_message(reader);
+
+    let mut message = bencoder::encode(&BType::Map(HashMap::from([(
+        "m".to_owned(),
+        Box::new(BType::Map(HashMap::from([(
+            "ut_metadata".to_owned(),
+            Box::new(BType::Number(1)),
+        )]))),
+    )])));
+    writer
+        .write_all(&mut to_vec((message.len() + 2) as u32))
+        .unwrap();
+    writer.write_all(&mut vec![20, 0]).unwrap();
+    writer.write_all(&mut message).unwrap();
+    writer.flush().unwrap();
+
+    let _ = read_peer_message(reader);
 }
 
 pub fn send_interested<T: Read>(writer: &mut impl Write, reader: &mut BufferedStream<T>) {
