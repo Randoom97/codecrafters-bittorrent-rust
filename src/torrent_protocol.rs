@@ -67,7 +67,10 @@ pub fn handshake<T: Read>(
     (peer_id, peer_reserved_bytes)
 }
 
-pub fn extension_handshake<T: Read>(writer: &mut impl Write, reader: &mut BufferedStream<T>) {
+pub fn extension_handshake<T: Read>(
+    writer: &mut impl Write,
+    reader: &mut BufferedStream<T>,
+) -> i128 {
     // wait for bitfield
     let _ = read_peer_message(reader);
 
@@ -85,7 +88,24 @@ pub fn extension_handshake<T: Read>(writer: &mut impl Write, reader: &mut Buffer
     writer.write_all(&mut message).unwrap();
     writer.flush().unwrap();
 
-    let _ = read_peer_message(reader);
+    let response = read_peer_message(reader);
+    assert_eq!(response[..1], vec![20, 0][..1], "message id's didn't match");
+    let btype = bdecoder::decode(&mut BufferedStream::new(response[2..].reader()));
+    let map = btype.as_map().unwrap();
+    assert!(
+        map.contains_key("m"),
+        "response dictionary didn't have an 'm' entry"
+    );
+    let extension_map = map.get("m").unwrap().as_map().unwrap();
+    assert!(
+        extension_map.contains_key("ut_metadata"),
+        "extension dictionary didn't contain an entry for 'ut_metadata'"
+    );
+    *extension_map
+        .get("ut_metadata")
+        .unwrap()
+        .as_number()
+        .unwrap()
 }
 
 pub fn send_interested<T: Read>(writer: &mut impl Write, reader: &mut BufferedStream<T>) {

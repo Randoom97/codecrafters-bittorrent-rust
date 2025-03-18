@@ -132,11 +132,12 @@ async fn main() {
                 &mut reader,
                 Some([0, 0, 0, 0, 0, 0x10, 0, 0]),
             );
-            if reserved_bytes[5] & 0x10 != 0 {
-                torrent_protocol::extension_handshake(&mut writer, &mut reader);
-            }
-
             println!("Peer ID: {}", hex::encode(peer_id));
+
+            if reserved_bytes[5] & 0x10 != 0 {
+                let metadata_id = torrent_protocol::extension_handshake(&mut writer, &mut reader);
+                println!("Peer Metadata Extension ID: {metadata_id}");
+            }
         }
         _ => {
             println!("unknown command: {}", args[1])
