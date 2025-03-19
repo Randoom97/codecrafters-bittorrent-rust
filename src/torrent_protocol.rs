@@ -86,7 +86,7 @@ pub fn extension_handshake<T: Read>(writer: &mut impl Write, reader: &mut Buffer
     writer.flush().unwrap();
 
     let response = read_peer_message(reader);
-    assert_eq!(response[..1], vec![20, 0][..1], "message id's didn't match");
+    assert_eq!(response[..2], vec![20, 0][..2], "message id's didn't match");
     let btype = bdecoder::decode(&mut BufferedStream::new(response[2..].reader()));
     let map = btype.as_map().unwrap();
     assert!(
@@ -106,10 +106,11 @@ pub fn extension_handshake<T: Read>(writer: &mut impl Write, reader: &mut Buffer
 }
 
 pub fn request_metadata<T: Read>(
+    partial_torrent_info: &TorrentInfo,
     metadata_id: u8,
     writer: &mut impl Write,
     reader: &mut BufferedStream<T>,
-) {
+) -> TorrentInfo {
     let message = bencoder::encode(&BType::Map(HashMap::from([
         ("msg_type".to_owned(), Box::new(BType::Number(0))),
         ("piece".to_owned(), Box::new(BType::Number(0))),
@@ -121,6 +122,20 @@ pub fn request_metadata<T: Read>(
     writer.write_all(&mut [20, metadata_id]).unwrap();
     writer.write_all(&message).unwrap();
     writer.flush().unwrap();
+
+    let response = read_peer_message(reader);
+    // not using metadata_id as second variable here because we sent 1 as our metadata id during handshake
+    assert_eq!(response[..2], vec![20, 1]);
+
+    let mut response_stream = BufferedStream::new(response[2..].reader());
+    let btype = bdecoder::decode(&mut response_stream);
+    let map = btype.as_map().unwrap();
+    assert!(map.contains_key("msg_type"));
+    assert_eq!(map.get("msg_type").unwrap().as_number(), Some(&1));
+    assert!(map.contains_key("piece"));
+    assert_eq!(map.get("piece").unwrap().as_number(), Some(&0));
+
+    TorrentInfo::from_metadata(partial_torrent_info, &mut response_stream)
 }
 
 pub fn send_interested<T: Read>(writer: &mut impl Write, reader: &mut BufferedStream<T>) {

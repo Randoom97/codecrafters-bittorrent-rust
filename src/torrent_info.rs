@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File};
+use std::{collections::HashMap, fs::File, io::Read};
 
 use sha1::{Digest, Sha1};
 
@@ -44,6 +44,38 @@ impl TorrentInfo {
 
         TorrentInfo {
             url,
+            length,
+            info_hash,
+            piece_length,
+            piece_hashes,
+        }
+    }
+
+    pub fn from_metadata<T: Read>(
+        partial_torrent_info: &TorrentInfo,
+        buf_stream: &mut BufferedStream<T>,
+    ) -> TorrentInfo {
+        let info_btype = bdecoder::decode(buf_stream);
+        let mut hasher = Sha1::new();
+        hasher.update(bencoder::encode(&info_btype));
+        let info_hash: Vec<u8> = hasher.finalize().iter().cloned().collect();
+
+        let info = info_btype.as_map().unwrap();
+        let length = usize::try_from(*info.get("length").unwrap().as_number().unwrap()).unwrap();
+
+        let piece_length =
+            usize::try_from(*info.get("piece length").unwrap().as_number().unwrap()).unwrap();
+
+        let mut piece_hashes = Vec::new();
+        let pieces = info.get("pieces").unwrap().as_bytes().unwrap();
+        let mut start = 0;
+        while start < pieces.len() {
+            piece_hashes.push(pieces[start..start + 20].iter().cloned().collect());
+            start += 20;
+        }
+
+        TorrentInfo {
+            url: partial_torrent_info.url.clone(),
             length,
             info_hash,
             piece_length,

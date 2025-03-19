@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub enum BType {
     Bytes(Vec<u8>),
     Number(i128),
