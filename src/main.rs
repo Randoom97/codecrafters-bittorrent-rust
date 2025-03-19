@@ -207,6 +207,49 @@ async fn main() {
             file.write_all(&data).unwrap();
             file.flush().unwrap();
         }
+        "magnet_download" => {
+            let partial_torrent_info_result = TorrentInfo::from_link(&args[4]);
+            if partial_torrent_info_result.is_err() {
+                panic!("{}", partial_torrent_info_result.err().unwrap());
+            }
+            let partial_torrent_info = partial_torrent_info_result.unwrap();
+
+            let response_btype = torrent_protocol::discovery(&partial_torrent_info).await;
+            let response = response_btype.as_map().unwrap();
+            let peer = &human_readable_peers(response.get("peers").unwrap().as_bytes().unwrap())[0];
+
+            let mut writer = TcpStream::connect(peer).unwrap();
+            let mut reader = BufferedStream::new(writer.try_clone().unwrap());
+            let (_, reserved_bytes) = torrent_protocol::handshake(
+                &partial_torrent_info,
+                &mut writer,
+                &mut reader,
+                Some([0, 0, 0, 0, 0, 0x10, 0, 0]),
+            );
+
+            if reserved_bytes[5] & 0x10 == 0 {
+                panic!("expected to have a peer that supports extensions");
+            }
+
+            let metadata_id = torrent_protocol::extension_handshake(&mut writer, &mut reader);
+            let torrent_info = torrent_protocol::request_metadata(
+                &partial_torrent_info,
+                metadata_id,
+                &mut writer,
+                &mut reader,
+            );
+
+            torrent_protocol::send_interested(&mut writer, &mut reader);
+
+            let mut file = File::create(&args[3]).unwrap();
+            for i in 0..torrent_info.piece_hashes.len() {
+                let data =
+                    torrent_protocol::download_piece(&torrent_info, i, &mut writer, &mut reader)
+                        .unwrap();
+                file.write_all(&data).unwrap();
+            }
+            file.flush().unwrap();
+        }
         _ => {
             println!("unknown command: {}", args[1])
         }
