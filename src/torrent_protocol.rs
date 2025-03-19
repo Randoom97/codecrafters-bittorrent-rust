@@ -67,10 +67,7 @@ pub fn handshake<T: Read>(
     (peer_id, peer_reserved_bytes)
 }
 
-pub fn extension_handshake<T: Read>(
-    writer: &mut impl Write,
-    reader: &mut BufferedStream<T>,
-) -> i128 {
+pub fn extension_handshake<T: Read>(writer: &mut impl Write, reader: &mut BufferedStream<T>) -> u8 {
     // wait for bitfield
     let _ = read_peer_message(reader);
 
@@ -105,7 +102,25 @@ pub fn extension_handshake<T: Read>(
         .get("ut_metadata")
         .unwrap()
         .as_number()
-        .unwrap()
+        .unwrap() as u8
+}
+
+pub fn request_metadata<T: Read>(
+    metadata_id: u8,
+    writer: &mut impl Write,
+    reader: &mut BufferedStream<T>,
+) {
+    let message = bencoder::encode(&BType::Map(HashMap::from([
+        ("msg_type".to_owned(), Box::new(BType::Number(0))),
+        ("piece".to_owned(), Box::new(BType::Number(0))),
+    ])));
+
+    writer
+        .write_all(&mut to_vec((message.len() + 2) as u32))
+        .unwrap();
+    writer.write_all(&mut [20, metadata_id]).unwrap();
+    writer.write_all(&message).unwrap();
+    writer.flush().unwrap();
 }
 
 pub fn send_interested<T: Read>(writer: &mut impl Write, reader: &mut BufferedStream<T>) {

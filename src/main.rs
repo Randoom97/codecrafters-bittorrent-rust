@@ -139,6 +139,33 @@ async fn main() {
                 println!("Peer Metadata Extension ID: {metadata_id}");
             }
         }
+        "magnet_info" => {
+            let torrent_info_result = TorrentInfo::from_link(&args[2]);
+            if torrent_info_result.is_err() {
+                panic!("{}", torrent_info_result.err().unwrap());
+            }
+            let torrent_info = torrent_info_result.unwrap();
+
+            let response_btype = torrent_protocol::discovery(&torrent_info).await;
+            let response = response_btype.as_map().unwrap();
+            let peer = &human_readable_peers(response.get("peers").unwrap().as_bytes().unwrap())[0];
+
+            let mut writer = TcpStream::connect(peer).unwrap();
+            let mut reader = BufferedStream::new(writer.try_clone().unwrap());
+            let (_, reserved_bytes) = torrent_protocol::handshake(
+                &torrent_info,
+                &mut writer,
+                &mut reader,
+                Some([0, 0, 0, 0, 0, 0x10, 0, 0]),
+            );
+
+            if reserved_bytes[5] & 0x10 == 0 {
+                panic!("expected to have a peer that supports extensions");
+            }
+
+            let metadata_id = torrent_protocol::extension_handshake(&mut writer, &mut reader);
+            torrent_protocol::request_metadata(metadata_id, &mut writer, &mut reader);
+        }
         _ => {
             println!("unknown command: {}", args[1])
         }
